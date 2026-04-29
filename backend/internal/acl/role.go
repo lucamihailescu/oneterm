@@ -3,24 +3,35 @@ package acl
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/samber/lo"
 	"github.com/spf13/cast"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	redis "github.com/veops/oneterm/pkg/cache"
 	"github.com/veops/oneterm/pkg/config"
+	"github.com/veops/oneterm/pkg/logger"
 	"github.com/veops/oneterm/pkg/remote"
 )
 
 const (
 	kFmtResources = "resource-%s-%d"
+
+	// roleResourcesTTL bounds the staleness of a role's resource list.
+	// Short enough that revoked grants stop being honored quickly without
+	// requiring explicit cache invalidation; long enough that a
+	// page-of-assets render only pays the round-trip to the ACL service
+	// once per minute per (role, resource type).
+	roleResourcesTTL = time.Minute
 )
 
 func GetRoleResources(ctx context.Context, rid int, resourceTypeId string) (res []*Resource, err error) {
-	// k := fmt.Sprintf(kFmtResources, resourceTypeId, rid)
-	// if err = redis.Get(ctx, k, &res); err == nil {
-	// 	return
-	// }
+	cacheKey := fmt.Sprintf(kFmtResources, resourceTypeId, rid)
+	if err = redis.Get(ctx, cacheKey, &res); err == nil {
+		return
+	}
 
 	token, err := remote.GetAclToken(ctx)
 	if err != nil {
@@ -44,9 +55,38 @@ func GetRoleResources(ctx context.Context, rid int, resourceTypeId string) (res 
 
 	res = data.Resources
 
-	// redis.SetEx(ctx, k, res, time.Minute)
+	if cacheErr := redis.SetEx(ctx, cacheKey, res, roleResourcesTTL); cacheErr != nil {
+		logger.L().Debug("acl resource cache write failed",
+			zap.String("key", cacheKey), zap.Error(cacheErr))
+	}
 
 	return
+}
+
+// InvalidateRoleResources removes the cached resource list for a (role,
+// resource type) pair. Call after a grant or revoke so callers don't have
+// to wait for the TTL.
+func InvalidateRoleResources(ctx context.Context, rid int, resourceTypeId string) {
+	if redis.RC == nil {
+		return
+	}
+	if err := redis.RC.Del(ctx, fmt.Sprintf(kFmtResources, resourceTypeId, rid)).Err(); err != nil {
+		logger.L().Debug("acl resource cache invalidate failed",
+			zap.Int("rid", rid), zap.String("type", resourceTypeId), zap.Error(err))
+	}
+}
+
+// invalidateAllRoleResources removes cached entries for every known resource
+// type for a role. Used after grant/revoke when the resource type isn't
+// directly known at the call site.
+func invalidateAllRoleResources(ctx context.Context, rid int) {
+	if redis.RC == nil {
+		return
+	}
+	for _, t := range config.PermResource {
+		_ = redis.RC.Del(ctx, fmt.Sprintf(kFmtResources, t, rid)).Err()
+	}
+	_ = redis.RC.Del(ctx, fmt.Sprintf(kFmtResources, "authorization", rid)).Err()
 }
 
 func GetRoleResourceIds(ctx context.Context, rid int, resourceTypeId string) (ids []int, err error) {
@@ -104,6 +144,9 @@ func GrantRoleResource(ctx context.Context, uid int, roleId int, resourceId int,
 		}).
 		Post(url)
 	err = remote.HandleErr(err, resp, func(dt map[string]any) bool { return true })
+	if err == nil {
+		invalidateAllRoleResources(ctx, roleId)
+	}
 	return
 }
 
@@ -123,6 +166,9 @@ func RevokeRoleResource(ctx context.Context, uid int, roleId int, resourceId int
 		}).
 		Post(url)
 	err = remote.HandleErr(err, resp, func(dt map[string]any) bool { return true })
+	if err == nil {
+		invalidateAllRoleResources(ctx, roleId)
+	}
 	return
 }
 

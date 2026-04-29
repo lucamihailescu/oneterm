@@ -97,6 +97,71 @@ func (s *SessionService) BuildCmdQuery(ctx *gin.Context, sessionId string) *gorm
 	return s.repo.BuildCmdQuery(ctx, sessionId)
 }
 
+// BuildCommandSearchQuery exposes the cross-session command audit search.
+// Non-admin callers are restricted to their own sessions.
+func (s *SessionService) BuildCommandSearchQuery(ctx *gin.Context) (*gorm.DB, error) {
+	currentUser, err := acl.GetSessionFromCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	q := s.repo.BuildCommandSearchQuery(ctx)
+	if !acl.IsAdmin(currentUser) {
+		q = q.Where("s.uid = ?", currentUser.GetUid())
+	}
+	return q, nil
+}
+
+// SessionReplayInfo describes a recording for the playback UI: existence,
+// approximate size, and command-level activity counts so a timeline can be
+// rendered without downloading the full .cast file.
+type SessionReplayInfo struct {
+	SessionId  string     `json:"session_id"`
+	Exists     bool       `json:"exists"`
+	Format     string     `json:"format"` // "asciinema-v2" or "guacd"
+	StartedAt  time.Time  `json:"started_at"`
+	ClosedAt   *time.Time `json:"closed_at"`
+	DurationMs int64      `json:"duration_ms"`
+	CmdCount   int64      `json:"cmd_count"`
+	UserName   string     `json:"user_name"`
+	AssetInfo  string     `json:"asset_info"`
+}
+
+// GetReplayInfo returns metadata about a session recording without streaming
+// it. Used by the playback UI to populate a timeline header before lazy-
+// loading the .cast frames.
+func (s *SessionService) GetReplayInfo(ctx context.Context, sessionId string) (*SessionReplayInfo, error) {
+	sess, err := s.repo.GetSession(ctx, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	info := &SessionReplayInfo{
+		SessionId: sess.SessionId,
+		StartedAt: sess.CreatedAt,
+		ClosedAt:  sess.ClosedAt,
+		UserName:  sess.UserName,
+		AssetInfo: sess.AssetInfo,
+		Exists:    gsession.ReplayExists(sessionId),
+	}
+	if sess.IsGuacd() {
+		info.Format = "guacd"
+	} else {
+		info.Format = "asciinema-v2"
+	}
+	if sess.ClosedAt != nil {
+		info.DurationMs = sess.ClosedAt.Sub(sess.CreatedAt).Milliseconds()
+	}
+
+	// Best-effort cmd count; failing to count shouldn't fail metadata
+	// retrieval — the UI can fall back to listing commands.
+	var n int64
+	if err := s.repo.BuildCmdQuery(&gin.Context{}, sessionId).Count(&n).Error; err == nil {
+		info.CmdCount = n
+	}
+
+	return info, nil
+}
+
 // GetSessionOptionAssets retrieves session option assets
 func (s *SessionService) GetSessionOptionAssets(ctx context.Context) ([]*model.SessionOptionAsset, error) {
 	return s.repo.GetSessionOptionAssets(ctx)

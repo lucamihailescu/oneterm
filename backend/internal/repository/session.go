@@ -16,6 +16,12 @@ type SessionRepository interface {
 	GetSession(ctx context.Context, sessionId string) (*model.Session, error)
 	BuildQuery(ctx *gin.Context, isAdmin bool, uid int) (*gorm.DB, error)
 	BuildCmdQuery(ctx *gin.Context, sessionId string) *gorm.DB
+	// BuildCommandSearchQuery constructs a cross-session command audit
+	// search. Supports the standard session.created_at JOIN so callers can
+	// filter by uid / asset / time range; the indexed (session_id,
+	// created_at) ordering on session_cmd keeps individual session lookups
+	// fast even when the session table is large.
+	BuildCommandSearchQuery(ctx *gin.Context) *gorm.DB
 	GetSessionOptionAssets(ctx context.Context) ([]*model.SessionOptionAsset, error)
 	GetSessionOptionClientIps(ctx context.Context) ([]string, error)
 	CreateSessionCmd(ctx context.Context, cmd *model.SessionCmd) error
@@ -95,6 +101,41 @@ func (r *sessionRepository) BuildCmdQuery(ctx *gin.Context, sessionId string) *g
 	}
 
 	return db
+}
+
+// BuildCommandSearchQuery is the cross-session variant of BuildCmdQuery.
+// Supports the same `search` text filter plus a date range and optional
+// (uid, asset_id, level) constraints by JOINing the session table.
+func (r *sessionRepository) BuildCommandSearchQuery(ctx *gin.Context) *gorm.DB {
+	db := dbpkg.DB.
+		Table("session_cmd AS c").
+		Select("c.*, s.uid AS uid, s.asset_id AS asset_id, s.user_name AS user_name, s.asset_info AS asset_info").
+		Joins("JOIN session AS s ON s.session_id = c.session_id")
+
+	if q, ok := ctx.GetQuery("search"); ok && q != "" {
+		db = db.Where("c.cmd LIKE ? OR c.result LIKE ?", "%"+q+"%", "%"+q+"%")
+	}
+	if start, ok := ctx.GetQuery("start"); ok && start != "" {
+		if t, err := time.Parse(time.RFC3339, start); err == nil {
+			db = db.Where("c.created_at >= ?", t)
+		}
+	}
+	if end, ok := ctx.GetQuery("end"); ok && end != "" {
+		if t, err := time.Parse(time.RFC3339, end); err == nil {
+			db = db.Where("c.created_at <= ?", t)
+		}
+	}
+	if v := ctx.Query("uid"); v != "" {
+		db = db.Where("s.uid = ?", v)
+	}
+	if v := ctx.Query("asset_id"); v != "" {
+		db = db.Where("s.asset_id = ?", v)
+	}
+	if v := ctx.Query("level"); v != "" {
+		db = db.Where("c.level = ?", v)
+	}
+
+	return db.Order("c.created_at DESC")
 }
 
 // GetSessionOptionAssets retrieves session option assets

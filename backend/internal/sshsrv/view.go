@@ -233,7 +233,7 @@ func (m *view) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case cmd == "exit" || cmd == "quit" || cmd == `\q`:
 				return m, tea.Sequence(tea.Printf("👋 Goodbye!"), tea.Quit)
 			case cmd == "help" || cmd == `\h` || cmd == `\?`:
-				return m, tea.Sequence(hisCmd, tea.Printf(m.helpText()), tea.Printf("%s", prompt))
+				return m, tea.Sequence(hisCmd, tea.Printf("%s", m.helpText()), tea.Printf("%s", prompt))
 			case cmd == "clear" || cmd == `\c`:
 				return m, tea.ClearScreen
 			case cmd == "list" || cmd == "ls" || cmd == "table":

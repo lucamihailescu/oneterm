@@ -121,6 +121,18 @@ func SetupRouter(r *gin.Engine) {
 			session.GET("/option/asset", c.GetSessionOptionAsset)
 			session.GET("/option/clientip", c.GetSessionOptionClientIp)
 			session.GET("/replay/:session_id", c.GetSessionReplay)
+			// C2: cross-session command audit search and recording metadata.
+			session.GET("/command-search", c.SearchSessionCommands)
+			session.GET("/replay/:session_id/info", c.GetSessionReplayInfo)
+		}
+
+		// C1 + C3: session approval workflow and just-in-time access.
+		accessRequest := v1.Group("access-request")
+		{
+			accessRequest.POST("", c.CreateAccessRequest)
+			accessRequest.GET("", c.GetAccessRequests)
+			accessRequest.POST("/:id/approve", c.ApproveAccessRequest)
+			accessRequest.POST("/:id/reject", c.RejectAccessRequest)
 		}
 
 		connect := v1.Group("connect")

@@ -87,6 +87,46 @@ func (c *Controller) GetSessionCmds(ctx *gin.Context) {
 	doGet[*model.SessionCmd](ctx, false, db, "")
 }
 
+// SearchSessionCommands godoc
+//
+//	@Tags		session
+//	@Summary	Cross-session command audit search (C2)
+//	@Param		search		query	string	false	"text query against cmd / result"
+//	@Param		start		query	string	false	"RFC3339 lower bound on c.created_at"
+//	@Param		end			query	string	false	"RFC3339 upper bound on c.created_at"
+//	@Param		uid			query	int		false	"filter by session.uid"
+//	@Param		asset_id	query	int		false	"filter by session.asset_id"
+//	@Param		level		query	int		false	"filter by command level"
+//	@Param		page_index	query	int		false	"page (1-based)"
+//	@Param		page_size	query	int		false	"page size"
+//	@Success	200			{object}	HttpResponse{data=ListData{list=[]model.SessionCmd}}
+//	@Router		/session/command-search [get]
+func (c *Controller) SearchSessionCommands(ctx *gin.Context) {
+	db, err := sessionService.BuildCommandSearchQuery(ctx)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+	doGet[*model.SessionCmd](ctx, false, db, "")
+}
+
+// GetSessionReplayInfo godoc
+//
+//	@Tags		session
+//	@Summary	Recording metadata for the playback UI (C2)
+//	@Param		session_id	path	string	true	"session id"
+//	@Success	200			{object}	HttpResponse{data=service.SessionReplayInfo}
+//	@Router		/session/replay/{session_id}/info [get]
+func (c *Controller) GetSessionReplayInfo(ctx *gin.Context) {
+	sessionId := ctx.Param("session_id")
+	info, err := sessionService.GetReplayInfo(ctx, sessionId)
+	if err != nil {
+		ctx.AbortWithError(http.StatusNotFound, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, NewHttpResponseWithData(info))
+}
+
 // GetSessionOptionAsset godoc
 //
 //	@Tags		session

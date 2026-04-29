@@ -136,6 +136,12 @@ type Session struct {
 	// Web session support
 	WebSession  interface{}            `json:"-" gorm:"-"`
 	Permissions *model.AuthPermissions `json:"-" gorm:"-"`
+
+	// AccessRequestId is set when this session was authorized by an approved
+	// AccessRequest (asset.require_approval=true). The JIT sweeper uses it
+	// to find live sessions to force-close once the request expires. Zero
+	// means no approval gate applies.
+	AccessRequestId int `json:"-" gorm:"-"`
 }
 
 func (m *Session) HasMonitors() (has bool) {

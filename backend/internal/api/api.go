@@ -36,6 +36,7 @@ func initDB() {
 		model.DefaultUserPreference, model.DefaultStorageConfig, model.DefaultStorageMetrics,
 		model.DefaultTimeTemplate, model.DefaultMigrationRecord, model.DefaultSystemConfig,
 		model.DefaultHostKey,
+		model.DefaultAccessRequest,
 	); err != nil {
 		logger.L().Fatal("Failed to init database", zap.Error(err))
 	}
@@ -50,6 +51,10 @@ func initDB() {
 func initServices() {
 	service.InitAuthorizationService()
 	fileservice.InitFileService()
+
+	// C3: just-in-time access sweeper that closes sessions whose approved
+	// AccessRequest has expired.
+	service.StartJITSweeper(ctx)
 
 	// Initialize predefined dangerous commands and templates
 	if err := service.InitBuiltinCommands(); err != nil {

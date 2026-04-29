@@ -141,6 +141,12 @@ type Asset struct {
 	// Web-specific configuration (only valid when protocols contain http/https)
 	WebConfig *WebConfig `json:"web_config,omitempty" gorm:"column:web_config;type:json"`
 
+	// RequireApproval enables the C1 four-eyes flow: a user attempting to
+	// connect to this asset must hold an approved + unexpired AccessRequest
+	// (see model.AccessRequest). Default false preserves backward
+	// compatibility for existing assets.
+	RequireApproval bool `json:"require_approval" gorm:"column:require_approval;not null;default:false"`
+
 	Permissions []string              `json:"permissions" gorm:"-"`
 	ResourceId  int                   `json:"resource_id" gorm:"column:resource_id"`
 	CreatorId   int                   `json:"creator_id" gorm:"column:creator_id"`

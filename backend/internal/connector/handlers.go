@@ -259,6 +259,30 @@ func DoConnect(ctx *gin.Context, ws *websocket.Conn) (sess *gsession.Session, er
 		return sess, err
 	}
 
+	// C1 four-eyes / C3 just-in-time access enforcement.
+	//
+	// When the asset is configured with require_approval=true, the user must
+	// also hold an approved AccessRequest whose time window covers now. The
+	// authorization rules above gate "is this user nominally allowed to
+	// reach this asset"; this check gates "is the request currently approved
+	// for this specific session". Sharing sessions bypass the gate because a
+	// share is itself an explicit grant.
+	if asset.RequireApproval && sess.ShareId == 0 {
+		grant, gerr := service.NewAccessRequestService().HasActiveGrant(ctx, currentUser.GetUid(), assetId, accountId)
+		if gerr != nil {
+			logger.L().Info("connect blocked: access request gate",
+				zap.String("user", currentUser.GetUserName()),
+				zap.Int("asset_id", assetId),
+				zap.Int("account_id", accountId),
+				zap.Error(gerr))
+			err = &myErrors.ApiError{Code: myErrors.ErrUnauthorized, Data: map[string]any{"perm": "approval", "err": gerr.Error()}}
+			return sess, err
+		}
+		// Stash the request id on the session so the JIT sweeper can correlate
+		// expiry to a specific live session at close time.
+		sess.AccessRequestId = grant.Id
+	}
+
 	// Set permissions in session for protocol-specific usage
 	if protocol == "http" || protocol == "https" {
 		// For Web protocols, store all relevant permissions

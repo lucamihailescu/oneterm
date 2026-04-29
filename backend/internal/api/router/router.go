@@ -123,6 +123,15 @@ func SetupRouter(r *gin.Engine) {
 			session.GET("/replay/:session_id", c.GetSessionReplay)
 		}
 
+		// C1 + C3: session approval workflow and just-in-time access.
+		accessRequest := v1.Group("access-request")
+		{
+			accessRequest.POST("", c.CreateAccessRequest)
+			accessRequest.GET("", c.GetAccessRequests)
+			accessRequest.POST("/:id/approve", c.ApproveAccessRequest)
+			accessRequest.POST("/:id/reject", c.RejectAccessRequest)
+		}
+
 		connect := v1.Group("connect")
 		{
 			connect.GET("/:asset_id/:account_id/:protocol", c.Connect)

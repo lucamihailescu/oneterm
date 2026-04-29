@@ -33,6 +33,7 @@ var (
 	// Legacy asset-based file manager
 	fm = &FileManager{
 		sftps:    map[string]*sftp.Client{},
+		sshs:     map[string]*ssh.Client{},
 		lastTime: map[string]time.Time{},
 		mtx:      sync.Mutex{},
 	}
@@ -86,11 +87,49 @@ type FileInfo struct {
 	ModTime string `json:"mod_time"`
 }
 
+// MaxLegacyFileClients caps how many (asset,account)-keyed SFTP clients the
+// legacy FileManager will keep alive concurrently. When exceeded, the
+// least-recently-used entry is evicted (and properly closed) before a new
+// client is opened. Tunable so an operator can raise it for very large
+// fleets.
+const MaxLegacyFileClients = 200
+
 // FileManager manages SFTP connections (legacy asset-based)
 type FileManager struct {
 	sftps    map[string]*sftp.Client
+	sshs     map[string]*ssh.Client
 	lastTime map[string]time.Time
 	mtx      sync.Mutex
+}
+
+// closeAndDelete tears down the SFTP and SSH clients for the given key and
+// removes their bookkeeping. Caller must hold fm.mtx.
+func (fm *FileManager) closeAndDelete(key string) {
+	if c, ok := fm.sftps[key]; ok {
+		_ = c.Close()
+		delete(fm.sftps, key)
+	}
+	if c, ok := fm.sshs[key]; ok {
+		_ = c.Close()
+		delete(fm.sshs, key)
+	}
+	delete(fm.lastTime, key)
+}
+
+// evictLRU drops the least-recently-used entry. Caller must hold fm.mtx.
+func (fm *FileManager) evictLRU() {
+	var oldestKey string
+	var oldestTime time.Time
+	for k, t := range fm.lastTime {
+		if oldestKey == "" || t.Before(oldestTime) {
+			oldestKey, oldestTime = k, t
+		}
+	}
+	if oldestKey != "" {
+		fm.closeAndDelete(oldestKey)
+		logger.L().Info("FileManager evicted LRU SFTP client",
+			zap.String("key", oldestKey), zap.Time("lastUsed", oldestTime))
+	}
 }
 
 func (fm *FileManager) GetFileClient(assetId, accountId int) (cli *sftp.Client, err error) {
@@ -105,6 +144,11 @@ func (fm *FileManager) GetFileClient(assetId, accountId int) (cli *sftp.Client, 
 	cli, ok := fm.sftps[key]
 	if ok {
 		return
+	}
+
+	// Enforce the cap before allocating a new connection.
+	for len(fm.sftps) >= MaxLegacyFileClients {
+		fm.evictLRU()
 	}
 
 	asset, account, gateway, err := repository.GetAAG(assetId, accountId)
@@ -145,9 +189,16 @@ func (fm *FileManager) GetFileClient(assetId, accountId int) (cli *sftp.Client, 
 		return
 	}
 	fm.sftps[key] = cli
+	fm.sshs[key] = sshCli
 
 	return
 }
+
+// MaxSessionFileClients caps how many concurrent session-keyed SFTP clients
+// the SessionFileManager will keep alive. Sessions are short-lived in
+// practice, but a misbehaving client that opens transfers without closing
+// them used to grow this map without bound.
+const MaxSessionFileClients = 500
 
 // SessionFileManager manages SFTP connections per session
 type SessionFileManager struct {
@@ -155,6 +206,32 @@ type SessionFileManager struct {
 	sessionSSH  map[string]*ssh.Client  // sessionId -> SSH client
 	lastActive  map[string]time.Time    // sessionId -> last active time
 	mutex       sync.RWMutex
+}
+
+// evictLRU drops the least-recently-active session client. Caller must hold
+// sfm.mutex (write lock).
+func (sfm *SessionFileManager) evictLRU() {
+	var oldestId string
+	var oldestTime time.Time
+	for id, t := range sfm.lastActive {
+		if oldestId == "" || t.Before(oldestTime) {
+			oldestId, oldestTime = id, t
+		}
+	}
+	if oldestId == "" {
+		return
+	}
+	if c, ok := sfm.sessionSFTP[oldestId]; ok {
+		_ = c.Close()
+		delete(sfm.sessionSFTP, oldestId)
+	}
+	if c, ok := sfm.sessionSSH[oldestId]; ok {
+		_ = c.Close()
+		delete(sfm.sessionSSH, oldestId)
+	}
+	delete(sfm.lastActive, oldestId)
+	logger.L().Info("SessionFileManager evicted LRU SFTP client",
+		zap.String("sessionId", oldestId), zap.Time("lastActive", oldestTime))
 }
 
 func (sfm *SessionFileManager) InitSessionSFTP(sessionId string, assetId, accountId int) error {
@@ -165,6 +242,11 @@ func (sfm *SessionFileManager) InitSessionSFTP(sessionId string, assetId, accoun
 	if _, exists := sfm.sessionSFTP[sessionId]; exists {
 		sfm.lastActive[sessionId] = time.Now()
 		return nil
+	}
+
+	// Enforce the cap before allocating a new connection.
+	for len(sfm.sessionSFTP) >= MaxSessionFileClients {
+		sfm.evictLRU()
 	}
 
 	// CRITICAL OPTIMIZATION: Try to reuse existing SSH connection from terminal session

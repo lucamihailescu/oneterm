@@ -35,19 +35,29 @@ func InitFileService() {
 	DefaultFileService = NewFileService(repo)
 }
 
+// LegacyFileClientIdleTimeout is how long a legacy (asset,account)-keyed SFTP
+// client may remain idle before its connection is reaped. The previous
+// implementation used Add(+10*time.Minute) instead of Add(-10*time.Minute),
+// causing every entry to be deleted on every tick — and it never closed the
+// underlying SFTP/SSH clients, leaking goroutines and TCP sockets.
+const LegacyFileClientIdleTimeout = 10 * time.Minute
+
 func init() {
-	// Legacy file manager cleanup
+	// Legacy file manager cleanup: reap clients idle for longer than the
+	// timeout, closing the underlying SFTP and SSH clients on the way out.
 	go func() {
 		tk := time.NewTicker(time.Minute)
+		defer tk.Stop()
 		for {
 			<-tk.C
 			func() {
-				GetFileManager().mtx.Lock()
-				defer GetFileManager().mtx.Unlock()
-				for k, v := range GetFileManager().lastTime {
-					if v.Before(time.Now().Add(time.Minute * 10)) {
-						delete(GetFileManager().sftps, k)
-						delete(GetFileManager().lastTime, k)
+				m := GetFileManager()
+				m.mtx.Lock()
+				defer m.mtx.Unlock()
+				cutoff := time.Now().Add(-LegacyFileClientIdleTimeout)
+				for k, lastUsed := range m.lastTime {
+					if lastUsed.Before(cutoff) {
+						m.closeAndDelete(k)
 					}
 				}
 			}()

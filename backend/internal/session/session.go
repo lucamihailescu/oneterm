@@ -2,7 +2,6 @@ package session
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"io"
 	"sync"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/veops/oneterm/internal/guacd"
 	"github.com/veops/oneterm/internal/model"
+	"github.com/veops/oneterm/internal/session/iobuf"
 	dbpkg "github.com/veops/oneterm/pkg/db"
 	"github.com/veops/oneterm/pkg/logger"
 )
@@ -88,7 +88,7 @@ type SessionChans struct {
 	ErrChan    chan error
 	InChan     chan []byte
 	OutChan    chan []byte
-	OutBuf     *bytes.Buffer
+	OutBuf     *iobuf.BoundedBuffer
 	WindowChan chan ssh.Window
 	AwayChan   chan struct{}
 	CloseChan  chan string
@@ -105,7 +105,7 @@ func NewSessionChans() *SessionChans {
 		ErrChan:    make(chan error),
 		InChan:     make(chan []byte, 8),
 		OutChan:    make(chan []byte, 8),
-		OutBuf:     &bytes.Buffer{},
+		OutBuf:     iobuf.NewBoundedBuffer(iobuf.DefaultOutBufMax),
 		WindowChan: make(chan ssh.Window),
 		AwayChan:   make(chan struct{}),
 		CloseChan:  make(chan string),

@@ -82,7 +82,7 @@
     <TriggerPattern ref="triggerPattern" :roles="roles" />
   </div>
 </template>
-<script>
+<script lang="jsx">
 import { mapState } from 'vuex'
 import TriggerForm from './module/triggerForm'
 import TriggerPattern from './module/triggerPattern'

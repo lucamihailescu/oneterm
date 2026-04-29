@@ -82,7 +82,7 @@
     </a-transfer>
   </a-modal>
 </template>
-<script>
+<script lang="jsx">
 import _ from 'lodash'
 import { updateResourceGroup, searchResource, getResourceGroupItems } from '@/modules/acl/api/resource'
 

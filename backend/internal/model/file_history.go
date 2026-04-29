@@ -13,16 +13,16 @@ const (
 
 type FileHistory struct {
 	Id        int    `json:"id" gorm:"column:id;primarykey;autoIncrement"`
-	Uid       int    `json:"uid" gorm:"column:uid"`
+	Uid       int    `json:"uid" gorm:"column:uid;index:idx_filehistory_uid_created,priority:1"`
 	UserName  string `json:"user_name" gorm:"column:user_name"`
-	AssetId   int    `json:"asset_id" gorm:"column:asset_id"`
+	AssetId   int    `json:"asset_id" gorm:"column:asset_id;index:idx_filehistory_asset_created,priority:1"`
 	AccountId int    `json:"account_id" gorm:"column:account_id"`
 	ClientIp  string `json:"client_ip" gorm:"column:client_ip"`
 	Action    int    `json:"action" gorm:"column:action"`
 	Dir       string `json:"dir" gorm:"column:dir"`
 	Filename  string `json:"filename" gorm:"column:filename"`
 
-	CreatedAt time.Time `json:"created_at" gorm:"column:created_at"`
+	CreatedAt time.Time `json:"created_at" gorm:"column:created_at;index:idx_filehistory_uid_created,priority:2,sort:desc;index:idx_filehistory_asset_created,priority:2,sort:desc"`
 	UpdatedAt time.Time `json:"updated_at" gorm:"column:updated_at"`
 }
 

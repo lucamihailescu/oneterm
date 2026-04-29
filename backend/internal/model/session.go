@@ -25,9 +25,9 @@ type Session struct {
 	Id          int        `json:"id" gorm:"column:id;primarykey;autoIncrement"`
 	SessionType int        `json:"session_type" gorm:"column:session_type"`
 	SessionId   string     `json:"session_id" gorm:"column:session_id;uniqueIndex:session_id;size:128"`
-	Uid         int        `json:"uid" gorm:"column:uid"`
+	Uid         int        `json:"uid" gorm:"column:uid;index:idx_session_uid_created,priority:1"`
 	UserName    string     `json:"user_name" gorm:"column:user_name"`
-	AssetId     int        `json:"asset_id" gorm:"column:asset_id"`
+	AssetId     int        `json:"asset_id" gorm:"column:asset_id;index:idx_session_asset_created,priority:1"`
 	Asset       *Asset     `json:"-" gorm:"-"`
 	AssetInfo   string     `json:"asset_info" gorm:"column:asset_info"`
 	AccountId   int        `json:"account_id" gorm:"column:account_id"`
@@ -36,12 +36,12 @@ type Session struct {
 	GatewayInfo string     `json:"gateway_info" gorm:"column:gateway_info"`
 	ClientIp    string     `json:"client_ip" gorm:"column:client_ip"`
 	Protocol    string     `json:"protocol" gorm:"column:protocol"`
-	Status      int        `json:"status" gorm:"column:status"`
+	Status      int        `json:"status" gorm:"column:status;index:idx_session_status_created,priority:1"`
 	Duration    int64      `json:"duration" gorm:"-"`
 	ClosedAt    *time.Time `json:"closed_at" gorm:"column:closed_at"`
 	ShareId     int        `json:"share_id" gorm:"column:share_id"`
 
-	CreatedAt time.Time `json:"created_at" gorm:"column:created_at"`
+	CreatedAt time.Time `json:"created_at" gorm:"column:created_at;index:idx_session_status_created,priority:2,sort:desc;index:idx_session_uid_created,priority:2,sort:desc;index:idx_session_asset_created,priority:2,sort:desc"`
 	UpdatedAt time.Time `json:"updated_at" gorm:"column:updated_at"`
 
 	CmdCount int64 `json:"cmd_count" gorm:"-"`
@@ -53,12 +53,12 @@ func (m *Session) TableName() string {
 
 type SessionCmd struct {
 	Id        int    `json:"id" gorm:"column:id;primarykey;autoIncrement"`
-	SessionId string `json:"session_id" gorm:"column:session_id"`
+	SessionId string `json:"session_id" gorm:"column:session_id;index:idx_sessioncmd_session_created,priority:1;size:128"`
 	Cmd       string `json:"cmd" gorm:"column:cmd"`
 	Result    string `json:"result" gorm:"column:result"`
 	Level     int    `json:"level" gorm:"column:level"`
 
-	CreatedAt time.Time `json:"created_at" gorm:"column:created_at"`
+	CreatedAt time.Time `json:"created_at" gorm:"column:created_at;index:idx_sessioncmd_session_created,priority:2,sort:desc"`
 }
 
 func (m *SessionCmd) TableName() string {

@@ -175,7 +175,7 @@ func (c *Controller) GetAccountCredentials(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, HttpResponse{
-		Data: account,
+		Data: model.NewAccountCredentials(account),
 	})
 }
 
@@ -218,7 +218,7 @@ func (c *Controller) GetAccountCredentials2(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, HttpResponse{
-		Data: account,
+		Data: model.NewAccountCredentials(account),
 	})
 }
 

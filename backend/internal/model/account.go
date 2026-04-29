@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"gorm.io/plugin/soft_delete"
@@ -53,6 +54,41 @@ func (m *Account) GetId() int {
 
 func (m *Account) SetPerms(perms []string) {
 	m.Permissions = perms
+}
+
+// MarshalJSON strips credentials from any default JSON serialization of Account.
+// Callers that legitimately need to expose Password/Pk/Phrase must use the
+// AccountCredentials DTO and go through the MFA-protected reveal endpoint.
+// Note: Unmarshal still accepts these fields so create/update payloads work.
+func (m Account) MarshalJSON() ([]byte, error) {
+	type accountSafe Account
+	safe := accountSafe(m)
+	safe.Password = ""
+	safe.Pk = ""
+	safe.Phrase = ""
+	return json.Marshal(safe)
+}
+
+// AccountCredentials is the only response shape that exposes secrets.
+// Returned exclusively by the MFA-gated reveal endpoint.
+type AccountCredentials struct {
+	Id       int    `json:"id"`
+	Name     string `json:"name"`
+	Account  string `json:"account"`
+	Password string `json:"password"`
+	Pk       string `json:"pk"`
+	Phrase   string `json:"phrase"`
+}
+
+func NewAccountCredentials(a *Account) *AccountCredentials {
+	return &AccountCredentials{
+		Id:       a.Id,
+		Name:     a.Name,
+		Account:  a.Account,
+		Password: a.Password,
+		Pk:       a.Pk,
+		Phrase:   a.Phrase,
+	}
 }
 
 type AccountCount struct {

@@ -1008,7 +1008,7 @@ func (s *AuthorizationV2Service) CreateRule(ctx context.Context, rule *model.Aut
 	rule.UpdatedAt = time.Now()
 
 	// Use transaction to ensure consistency
-	return dbpkg.DB.Transaction(func(tx *gorm.DB) error {
+	err := dbpkg.DB.Transaction(func(tx *gorm.DB) error {
 		// Create ACL resource
 		resourceId, err := acl.CreateAcl(ctx, currentUser, config.RESOURCE_AUTHORIZATION, rule.Name)
 		if err != nil {
@@ -1030,6 +1030,10 @@ func (s *AuthorizationV2Service) CreateRule(ctx context.Context, rule *model.Aut
 
 		return nil
 	})
+	if err == nil {
+		InvalidateAuthCache(ctx)
+	}
+	return err
 }
 
 // UpdateRule updates an existing authorization rule with ACL handling
@@ -1061,7 +1065,7 @@ func (s *AuthorizationV2Service) UpdateRule(ctx context.Context, rule *model.Aut
 	rule.UpdatedAt = time.Now()
 
 	// Use transaction to ensure consistency
-	return dbpkg.DB.Transaction(func(tx *gorm.DB) error {
+	err = dbpkg.DB.Transaction(func(tx *gorm.DB) error {
 		// Update role permissions if Rids changed
 		if !reflect.DeepEqual(rule.Rids, existingRule.Rids) {
 			// Revoke permissions from removed roles
@@ -1088,6 +1092,10 @@ func (s *AuthorizationV2Service) UpdateRule(ctx context.Context, rule *model.Aut
 
 		return nil
 	})
+	if err == nil {
+		InvalidateAuthCache(ctx)
+	}
+	return err
 }
 
 // DeleteRule deletes an authorization rule with ACL cleanup
@@ -1107,7 +1115,7 @@ func (s *AuthorizationV2Service) DeleteRule(ctx context.Context, id int) error {
 	}
 
 	// Use transaction to ensure consistency
-	return dbpkg.DB.Transaction(func(tx *gorm.DB) error {
+	err = dbpkg.DB.Transaction(func(tx *gorm.DB) error {
 		// Delete ACL resource
 		if err := acl.DeleteResource(ctx, currentUser.GetUid(), rule.ResourceId); err != nil {
 			return fmt.Errorf("failed to delete ACL resource: %w", err)
@@ -1120,6 +1128,10 @@ func (s *AuthorizationV2Service) DeleteRule(ctx context.Context, id int) error {
 
 		return nil
 	})
+	if err == nil {
+		InvalidateAuthCache(ctx)
+	}
+	return err
 }
 
 // GetRuleById retrieves a rule by ID

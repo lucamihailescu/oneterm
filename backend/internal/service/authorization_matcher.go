@@ -11,11 +11,24 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 	"github.com/spf13/cast"
+	"go.uber.org/zap"
 
 	"github.com/veops/oneterm/internal/acl"
 	"github.com/veops/oneterm/internal/model"
 	"github.com/veops/oneterm/internal/repository"
+	"github.com/veops/oneterm/pkg/cache"
+	"github.com/veops/oneterm/pkg/logger"
 )
+
+// AuthCacheTTL is how long an authorization decision is cached. Short enough
+// that revoked permissions become effective quickly; long enough to absorb
+// bursts of repeated checks during a single user session. The cache is also
+// invalidated explicitly when V2 rules are written (see InvalidateAuthCache).
+const AuthCacheTTL = 60 * time.Second
+
+// authCacheKeyPrefix scopes our keys so an InvalidateAuthCache flush won't
+// touch unrelated data in the shared Redis.
+const authCacheKeyPrefix = "auth_v2:"
 
 // IAuthorizationMatcher defines the interface for authorization matching
 type IAuthorizationMatcher interface {
@@ -509,21 +522,69 @@ func (m *AuthorizationMatcher) GetTargetTags(targetType string, targetId int) ([
 	return []string{}, nil
 }
 
-// getCacheKey generates a cache key for the request
+// getCacheKey generates a cache key for the request. Includes the prefix so
+// pattern-based invalidation can scope to authorization keys only.
 func (m *AuthorizationMatcher) getCacheKey(req *model.AuthRequest) string {
-	return fmt.Sprintf("auth_v2:%d:%d:%d:%d:%s",
-		req.UserId, req.NodeId, req.AssetId, req.AccountId, req.Action)
+	return fmt.Sprintf("%s%d:%d:%d:%d:%s",
+		authCacheKeyPrefix, req.UserId, req.NodeId, req.AssetId, req.AccountId, req.Action)
 }
 
-// getCachedResult retrieves cached authorization result
+// getCachedResult retrieves a previously computed AuthResult from Redis.
+// Cache misses and decode errors return nil so callers fall through to the
+// authoritative path. We deliberately swallow cache errors — never fail the
+// auth check because Redis is unreachable.
 func (m *AuthorizationMatcher) getCachedResult(cacheKey string) *model.AuthResult {
-	// TODO: Implement Redis caching
-	return nil
+	if cache.RC == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	var result model.AuthResult
+	if err := cache.Get(ctx, cacheKey, &result); err != nil {
+		return nil
+	}
+	return &result
 }
 
-// cacheResult caches the authorization result
+// cacheResult writes the AuthResult to Redis with AuthCacheTTL. Best effort —
+// any error is logged at debug level and ignored.
 func (m *AuthorizationMatcher) cacheResult(cacheKey string, result *model.AuthResult) {
-	// TODO: Implement Redis caching with TTL
+	if cache.RC == nil || result == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	if err := cache.SetEx(ctx, cacheKey, result, AuthCacheTTL); err != nil {
+		logger.L().Debug("auth cache write failed", zap.String("key", cacheKey), zap.Error(err))
+	}
+}
+
+// InvalidateAuthCache clears every authorization decision currently cached.
+// Call after any change to authorization rules or role assignments. Uses
+// SCAN+DEL rather than FLUSHDB so unrelated keys in the shared Redis are
+// untouched. Errors are logged but never propagated; an outdated decision
+// will simply linger until its TTL expires.
+func InvalidateAuthCache(ctx context.Context) {
+	if cache.RC == nil {
+		return
+	}
+	iter := cache.RC.Scan(ctx, 0, authCacheKeyPrefix+"*", 1000).Iterator()
+	deleted := 0
+	for iter.Next(ctx) {
+		if err := cache.RC.Del(ctx, iter.Val()).Err(); err != nil {
+			logger.L().Warn("auth cache delete failed", zap.String("key", iter.Val()), zap.Error(err))
+			continue
+		}
+		deleted++
+	}
+	if err := iter.Err(); err != nil {
+		logger.L().Warn("auth cache scan failed", zap.Error(err))
+	}
+	if deleted > 0 {
+		logger.L().Info("auth cache invalidated", zap.Int("keys", deleted))
+	}
 }
 
 // MatchWithScope checks if a request is authorized using only specified rule IDs (like V1's AuthorizationIds filtering)

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"gorm.io/plugin/soft_delete"
@@ -55,6 +56,17 @@ func (m *Gateway) GetId() int {
 
 func (m *Gateway) SetPerms(perms []string) {
 	m.Permissions = perms
+}
+
+// MarshalJSON strips credentials from any default JSON serialization of Gateway.
+// Unmarshal still accepts these fields so create/update payloads continue to work.
+func (m Gateway) MarshalJSON() ([]byte, error) {
+	type gatewaySafe Gateway
+	safe := gatewaySafe(m)
+	safe.Password = ""
+	safe.Pk = ""
+	safe.Phrase = ""
+	return json.Marshal(safe)
 }
 
 type GatewayCount struct {

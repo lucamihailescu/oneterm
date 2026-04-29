@@ -14,6 +14,7 @@ import (
 	"github.com/veops/oneterm/internal/model"
 	"github.com/veops/oneterm/internal/repository"
 	gsession "github.com/veops/oneterm/internal/session"
+	"github.com/veops/oneterm/internal/sshhostkey"
 	"github.com/veops/oneterm/internal/tunneling"
 	"github.com/veops/oneterm/pkg/logger"
 )
@@ -41,7 +42,7 @@ func ConnectSsh(ctx *gin.Context, sess *gsession.Session, asset *model.Asset, ac
 	sshCli, err := gossh.Dial("tcp", fmt.Sprintf("%s:%d", ip, port), &gossh.ClientConfig{
 		User:            account.Account,
 		Auth:            []gossh.AuthMethod{auth},
-		HostKeyCallback: gossh.InsecureIgnoreHostKey(),
+		HostKeyCallback: sshhostkey.Callback(),
 		Timeout:         time.Second,
 	})
 	if err != nil {

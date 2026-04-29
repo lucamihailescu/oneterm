@@ -63,6 +63,10 @@ func init() {
 type HttpConfig struct {
 	Host string `yaml:"host"`
 	Port int    `yaml:"port"`
+	// AllowedOrigins is the list of origins allowed to open WebSocket connections.
+	// Empty means same-origin only (rejects cross-origin upgrades).
+	// Set "*" to allow any origin (development only).
+	AllowedOrigins []string `yaml:"allowedOrigins"`
 }
 
 type RedisConfig struct {
@@ -135,6 +139,11 @@ type SshConfig struct {
 	Host       string `yaml:"host"`
 	Port       int    `yaml:"port"`
 	PrivateKey string `yaml:"privateKey,omitempty"` // Deprecated: now stored encrypted in database SystemConfig table
+	// HostKeyMode controls outbound SSH host-key verification:
+	//   "tofu"   (default): trust on first use, reject mismatches afterward.
+	//   "strict":           reject any host whose key is not already pinned.
+	//   "insecure":         accept any key (legacy behavior, MITM-vulnerable).
+	HostKeyMode string `yaml:"hostKeyMode"`
 }
 
 type GuacdConfig struct {

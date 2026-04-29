@@ -1,55 +1,49 @@
 package utils
 
 import (
+	"strings"
 	"testing"
 )
 
-func TestEncryptAES(t *testing.T) {
-	type args struct {
-		plaintext string
+// TestEncryptAES_RoundTrip verifies that GCM-encrypted data round-trips and
+// produces a different ciphertext on each call (random nonce).
+func TestEncryptAES_RoundTrip(t *testing.T) {
+	plaintext := "123456789abcdefghijklmnopqrstuvwxyz"
+
+	ct1 := EncryptAES(plaintext)
+	ct2 := EncryptAES(plaintext)
+
+	if ct1 == ct2 {
+		t.Fatalf("expected different ciphertexts due to random nonce; got identical %q", ct1)
 	}
-	tests := []struct {
-		name string
-		args args
-		want string
-	}{
-		{
-			name: "Test 1",
-			args: args{
-				plaintext: "123456789abcdefghijklmnopqrstuvwxyz",
-			},
-			want: "hrr23HSXrZEOw5haacoj32QJLrHdpj42jaQcPVRf9AI8SzeSdWJhzTrYgsOgmNoN",
-		},
+	if !strings.HasPrefix(ct1, "v1:") {
+		t.Fatalf("expected ciphertext to use v1 (GCM) format, got %q", ct1)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := EncryptAES(tt.args.plaintext); got != tt.want {
-				t.Errorf("EncryptAES() = %v, want %v", got, tt.want)
-			}
-		})
+	if got := DecryptAES(ct1); got != plaintext {
+		t.Errorf("DecryptAES(v1) = %q, want %q", got, plaintext)
+	}
+	if got := DecryptAES(ct2); got != plaintext {
+		t.Errorf("DecryptAES(v1) = %q, want %q", got, plaintext)
 	}
 }
 
-func TestDecryptAES(t *testing.T) {
-	type args struct {
-		cipherText string
+// TestDecryptAES_LegacyCBC ensures historical CBC+static-IV ciphertexts in the
+// database continue to decrypt after the GCM migration.
+func TestDecryptAES_LegacyCBC(t *testing.T) {
+	const legacy = "hrr23HSXrZEOw5haacoj32QJLrHdpj42jaQcPVRf9AI8SzeSdWJhzTrYgsOgmNoN"
+	const plaintext = "123456789abcdefghijklmnopqrstuvwxyz"
+
+	if got := DecryptAES(legacy); got != plaintext {
+		t.Errorf("legacy DecryptAES = %q, want %q", got, plaintext)
 	}
-	tests := []struct {
-		name string
-		args args
-		want string
-	}{
-		{
-			name: "Test 1",
-			args: args{cipherText: "hrr23HSXrZEOw5haacoj32QJLrHdpj42jaQcPVRf9AI8SzeSdWJhzTrYgsOgmNoN"},
-			want: "123456789abcdefghijklmnopqrstuvwxyz",
-		},
+}
+
+// TestDecryptAES_Empty handles malformed input gracefully (used to be a panic).
+func TestDecryptAES_Empty(t *testing.T) {
+	if got := DecryptAES(""); got != "" {
+		t.Errorf("DecryptAES(\"\") = %q, want empty string", got)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := DecryptAES(tt.args.cipherText); got != tt.want {
-				t.Errorf("DecryptAES() = %v, want %v", got, tt.want)
-			}
-		})
+	if got := DecryptAES("not-base64-!!!"); got != "" {
+		t.Errorf("DecryptAES(garbage) = %q, want empty string", got)
 	}
 }

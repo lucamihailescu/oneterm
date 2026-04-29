@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -32,7 +31,7 @@ func (s *CommandService) CheckDependencies(ctx context.Context, commandId int) (
 	err := dbpkg.DB.
 		Model(model.DefaultAsset).
 		Select("name").
-		Where(fmt.Sprintf("JSON_CONTAINS(cmd_ids, '%d')", commandId)).
+		Where("JSON_CONTAINS(cmd_ids, CAST(? AS JSON))", commandId).
 		First(&assetName).
 		Error
 

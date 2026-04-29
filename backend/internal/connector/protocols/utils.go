@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/veops/oneterm/internal/model"
 	fileservice "github.com/veops/oneterm/internal/service/file"
 	gsession "github.com/veops/oneterm/internal/session"
+	"github.com/veops/oneterm/pkg/config"
 	myErrors "github.com/veops/oneterm/pkg/errors"
 	"github.com/veops/oneterm/pkg/logger"
 )
@@ -32,13 +34,52 @@ var (
 		HandshakeTimeout: time.Minute,
 		ReadBufferSize:   4096,
 		WriteBufferSize:  4096,
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
+		CheckOrigin:      checkWebsocketOrigin,
 	}
 
 	wsWriteMutex = &sync.Mutex{}
 )
+
+// checkWebsocketOrigin enforces an Origin allow-list for WebSocket upgrades.
+//
+// Behaviour:
+//   - No Origin header (non-browser client): allowed.
+//   - "*" present in config.Cfg.Http.AllowedOrigins: any origin allowed (dev only).
+//   - Empty allow-list: only same-origin upgrades are accepted (Origin host must
+//     match the Host header of the request).
+//   - Non-empty allow-list: Origin must match one of the configured entries
+//     (compared by scheme://host[:port], case-insensitive).
+func checkWebsocketOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Host == "" {
+		logger.L().Warn("rejecting websocket upgrade: malformed Origin", zap.String("origin", origin))
+		return false
+	}
+	originNorm := strings.ToLower(parsed.Scheme + "://" + parsed.Host)
+
+	allowed := config.Cfg.Http.AllowedOrigins
+	for _, a := range allowed {
+		if a == "*" {
+			return true
+		}
+		if strings.EqualFold(strings.TrimRight(a, "/"), originNorm) {
+			return true
+		}
+	}
+
+	if len(allowed) == 0 && strings.EqualFold(parsed.Host, r.Host) {
+		return true
+	}
+
+	logger.L().Warn("rejecting websocket upgrade: origin not allowed",
+		zap.String("origin", origin), zap.String("host", r.Host))
+	return false
+}
 
 // WriteToMonitors sends data to all monitoring sessions
 func WriteToMonitors(monitors *sync.Map, out []byte) {

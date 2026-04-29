@@ -133,7 +133,7 @@ export default {
 }
 </script>
 
-<stype lang="less" scoped>
+<style lang="less" scoped>
 .command-search {
   width: 250px;
   margin-bottom: 20px;
@@ -143,4 +143,4 @@ export default {
   text-align: right;
   margin-top: 8px;
 }
-</stype>
+</style>

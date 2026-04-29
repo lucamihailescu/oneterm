@@ -1,4 +1,3 @@
-import '@babel/polyfill'
 import Vue from 'vue'
 import App from './App.vue'
 import router from './router'
@@ -11,7 +10,12 @@ import Setting from './config/setting'
 import { Icon } from 'ant-design-vue'
 import i18n from './lang'
 
-import iconFont from '../public/iconfont/iconfont'
+// iconfont.cn-generated script that sets window._iconfont_svg_string_*.
+// Loaded as a <script> tag from /iconfont/iconfont.js in index.html so the
+// 3.9 MB blob ships as its own asset instead of inflating the main JS
+// bundle. The original code's default-import binding was always undefined
+// regardless; only the global window mutations matter.
+const iconFont = undefined
 
 const customIcon = Icon.createFromIconfontCN(iconFont)
 Vue.component('ops-icon', customIcon)

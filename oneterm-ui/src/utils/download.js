@@ -1,5 +1,9 @@
 import moment from 'moment'
-import XLSX from 'xlsx'
+// xlsx@0.18.x ships an ESM build that exports only named bindings; a
+// default import resolves to undefined under Vite/Rollup. Namespace
+// import preserves the same `XLSX.read` / `XLSX.utils` call sites used
+// below.
+import * as XLSX from 'xlsx'
 import XLSXS from 'xlsx-js-style'
 
 export const downloadTxt = ({ text, title }) => {

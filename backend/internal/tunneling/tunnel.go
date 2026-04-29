@@ -14,6 +14,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/veops/oneterm/internal/model"
+	"github.com/veops/oneterm/internal/sshhostkey"
 	"github.com/veops/oneterm/pkg/logger"
 )
 
@@ -115,7 +116,7 @@ func (tm *TunnelManager) OpenTunnel(isConnectable bool, sessionId, remoteIp stri
 			User:            gateway.Account,
 			Auth:            []ssh.AuthMethod{auth},
 			Timeout:         time.Second,
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			HostKeyCallback: sshhostkey.Callback(),
 		})
 		if err != nil {
 			logger.L().Error("open gateway sshcli failed", zap.Int("gatewayId", gateway.Id), zap.Error(err))

@@ -14,6 +14,7 @@ import (
 
 	"github.com/veops/oneterm/internal/repository"
 	gsession "github.com/veops/oneterm/internal/session"
+	"github.com/veops/oneterm/internal/sshhostkey"
 	"github.com/veops/oneterm/internal/tunneling"
 	"github.com/veops/oneterm/pkg/logger"
 )
@@ -88,7 +89,7 @@ func AssetBasedTransfer(transferId, tempFilePath, targetPath string, assetId, ac
 	sshClient, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", ip, port), &ssh.ClientConfig{
 		User:            account.Account,
 		Auth:            []ssh.AuthMethod{auth},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: sshhostkey.Callback(),
 		Timeout:         30 * time.Second,
 		// Ultra-high performance optimizations - fastest algorithms first
 		Config: ssh.Config{

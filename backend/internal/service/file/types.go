@@ -24,6 +24,7 @@ import (
 	"github.com/veops/oneterm/internal/model"
 	"github.com/veops/oneterm/internal/repository"
 	gsession "github.com/veops/oneterm/internal/session"
+	"github.com/veops/oneterm/internal/sshhostkey"
 	"github.com/veops/oneterm/internal/tunneling"
 	"github.com/veops/oneterm/pkg/logger"
 )
@@ -124,7 +125,7 @@ func (fm *FileManager) GetFileClient(assetId, accountId int) (cli *sftp.Client, 
 	sshCli, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", ip, port), &ssh.ClientConfig{
 		User:            account.Account,
 		Auth:            []ssh.AuthMethod{auth},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: sshhostkey.Callback(),
 		Timeout:         time.Second,
 	})
 	if err != nil {
@@ -196,7 +197,7 @@ func (sfm *SessionFileManager) InitSessionSFTP(sessionId string, assetId, accoun
 		sshClient, err = ssh.Dial("tcp", fmt.Sprintf("%s:%d", ip, port), &ssh.ClientConfig{
 			User:            account.Account,
 			Auth:            []ssh.AuthMethod{auth},
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			HostKeyCallback: sshhostkey.Callback(),
 			Timeout:         10 * time.Second,
 		})
 		if err != nil {
